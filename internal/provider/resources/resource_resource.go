@@ -552,7 +552,7 @@ func (r *ResourceResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	plan, diags = convertFullResourceResultResponseSchemaToModel(
+	result, diags := convertFullResourceResultResponseSchemaToModel(
 		ctx,
 		&resourceResp.JSON200.Result,
 	)
@@ -561,12 +561,36 @@ func (r *ResourceResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
+	// Detect if API silently rejected maintainers
+	if len(plan.Maintainers) > 0 && len(result.Maintainers) == 0 {
+		maintainerIDs := make([]string, 0, len(plan.Maintainers))
+		for _, m := range plan.Maintainers {
+			if !m.Entity.IsNull() {
+				idAttr := m.Entity.Attributes()["id"]
+				if strVal, ok := idAttr.(basetypes.StringValue); ok {
+					maintainerIDs = append(maintainerIDs, strVal.ValueString())
+				}
+			}
+		}
+		resp.Diagnostics.AddError(
+			"Maintainer Assignment Rejected",
+			fmt.Sprintf(
+				"The API rejected the maintainer assignment for this resource. "+
+					"The specified maintainer(s) (%s) may not have permission to be maintainers for this resource type, "+
+					"or the resource may not support maintainers. "+
+					"Please verify the maintainer IDs and resource configuration.",
+				strings.Join(maintainerIDs, ", "),
+			),
+		)
+		return
+	}
+
 	// Write logs using the tflog package
 	// Documentation: https://terraform.io/plugin/log
 	tflog.Trace(ctx, "created a entitle resource resource")
 
 	// Save data into Terraform state
-	diags = resp.State.Set(ctx, &plan)
+	diags = resp.State.Set(ctx, &result)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -886,7 +910,7 @@ func (r *ResourceResource) Update(ctx context.Context, req resource.UpdateReques
 		return
 	}
 
-	data, diags = convertFullResourceResultResponseSchemaToModel(
+	result, diags := convertFullResourceResultResponseSchemaToModel(
 		ctx,
 		&resourceResp.JSON200.Result,
 	)
@@ -895,8 +919,32 @@ func (r *ResourceResource) Update(ctx context.Context, req resource.UpdateReques
 		return
 	}
 
+	// Detect if API silently rejected maintainers
+	if len(data.Maintainers) > 0 && len(result.Maintainers) == 0 {
+		maintainerIDs := make([]string, 0, len(data.Maintainers))
+		for _, m := range data.Maintainers {
+			if !m.Entity.IsNull() {
+				idAttr := m.Entity.Attributes()["id"]
+				if strVal, ok := idAttr.(basetypes.StringValue); ok {
+					maintainerIDs = append(maintainerIDs, strVal.ValueString())
+				}
+			}
+		}
+		resp.Diagnostics.AddError(
+			"Maintainer Assignment Rejected",
+			fmt.Sprintf(
+				"The API rejected the maintainer assignment for this resource. "+
+					"The specified maintainer(s) (%s) may not have permission to be maintainers for this resource type, "+
+					"or the resource may not support maintainers. "+
+					"Please verify the maintainer IDs and resource configuration.",
+				strings.Join(maintainerIDs, ", "),
+			),
+		)
+		return
+	}
+
 	// Save updated data into Terraform state
-	diags = resp.State.Set(ctx, &data)
+	diags = resp.State.Set(ctx, &result)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
