@@ -690,6 +690,12 @@ func (r *IntegrationResource) Read(ctx context.Context, req resource.ReadRequest
 		return
 	}
 
+	// Handle 404 as drift - resource was deleted outside of Terraform
+	if integrationResp.HTTPResponse.StatusCode == 404 {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
 	err = utils.HTTPResponseToError(integrationResp.HTTPResponse.StatusCode, integrationResp.Body)
 	if err != nil {
 		resp.Diagnostics.AddError(

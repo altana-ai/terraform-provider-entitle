@@ -444,6 +444,12 @@ func (r *BundleResource) Read(
 		return
 	}
 
+	// Handle 404 as drift - resource was deleted outside of Terraform
+	if bundleResp.HTTPResponse.StatusCode == 404 {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
 	err = utils.HTTPResponseToError(bundleResp.HTTPResponse.StatusCode, bundleResp.Body)
 	if err != nil {
 		resp.Diagnostics.AddError(
