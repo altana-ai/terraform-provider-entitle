@@ -117,6 +117,9 @@ func (r *ResourceResource) Schema(ctx context.Context, req resource.SchemaReques
 									Computed:            true,
 									Description:         "Maintainer's email",
 									MarkdownDescription: "Maintainer's email",
+									PlanModifiers: []planmodifier.String{
+										stringplanmodifier.UseStateForUnknown(),
+									},
 								},
 							},
 							Optional:            true,
@@ -1195,15 +1198,17 @@ func convertFullResourceResultResponseSchemaToModel(
 				return ResourceResourceModel{}, diags
 			}
 
-			// Handle null email field
-			emailValue := ""
+			// Handle null email field - preserve null instead of converting to empty string
+			var emailValue types.String
 			if body.Group.Email != nil {
-				emailValue = *body.Group.Email
+				emailValue = utils.TrimmedStringValue(*body.Group.Email)
+			} else {
+				emailValue = types.StringNull()
 			}
 
 			g := &utils.IdEmailModel{
 				Id:    utils.TrimmedStringValue(body.Group.Id),
-				Email: utils.TrimmedStringValue(emailValue),
+				Email: emailValue,
 			}
 
 			gObject, diagsValues := g.AsObjectValue(ctx)
