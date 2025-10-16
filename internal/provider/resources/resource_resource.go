@@ -561,28 +561,64 @@ func (r *ResourceResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	// Detect if API silently rejected maintainers
-	if len(plan.Maintainers) > 0 && len(result.Maintainers) == 0 {
-		maintainerIDs := make([]string, 0, len(plan.Maintainers))
+	// Validate that each maintainer we sent was accepted by the API
+	if len(plan.Maintainers) > 0 {
+		// Build map of maintainer IDs we sent
+		sentIDs := make(map[string]string) // ID -> type
 		for _, m := range plan.Maintainers {
 			if !m.Entity.IsNull() {
 				idAttr := m.Entity.Attributes()["id"]
 				if strVal, ok := idAttr.(basetypes.StringValue); ok {
-					maintainerIDs = append(maintainerIDs, strVal.ValueString())
+					sentIDs[strVal.ValueString()] = m.Type.ValueString()
 				}
 			}
 		}
-		resp.Diagnostics.AddError(
-			"Maintainer Assignment Rejected",
-			fmt.Sprintf(
-				"The API rejected the maintainer assignment for this resource. "+
-					"The specified maintainer(s) (%s) may not have permission to be maintainers for this resource type, "+
-					"or the resource may not support maintainers. "+
-					"Please verify the maintainer IDs and resource configuration.",
-				strings.Join(maintainerIDs, ", "),
-			),
-		)
-		return
+
+		// Build map of maintainer IDs we received back
+		receivedIDs := make(map[string]bool)
+		for _, m := range result.Maintainers {
+			if !m.Entity.IsNull() {
+				idAttr := m.Entity.Attributes()["id"]
+				if strVal, ok := idAttr.(basetypes.StringValue); ok {
+					receivedIDs[strVal.ValueString()] = true
+				}
+			}
+		}
+
+		// Find which maintainers were rejected
+		var rejectedIDs []string
+		var rejectedTypes []string
+		for id, maintainerType := range sentIDs {
+			if !receivedIDs[id] {
+				rejectedIDs = append(rejectedIDs, id)
+				rejectedTypes = append(rejectedTypes, maintainerType)
+			}
+		}
+
+		if len(rejectedIDs) > 0 {
+			// Build detailed error message
+			var errorDetails strings.Builder
+			errorDetails.WriteString("The API rejected the following maintainer assignment(s):\n\n")
+			for i, id := range rejectedIDs {
+				errorDetails.WriteString(fmt.Sprintf("  - ID: %s (type: %s)\n", id, rejectedTypes[i]))
+			}
+			errorDetails.WriteString("\nPossible causes:\n")
+			errorDetails.WriteString("  1. INVALID ID: The ID may not exist or may not be a valid directory group/user ID\n")
+			errorDetails.WriteString("     - Common mistake: Using an Entitle Resource ID instead of a Directory Group ID\n")
+			errorDetails.WriteString("     - Solution: Verify the ID exists using the directory groups API or UI\n")
+			errorDetails.WriteString("  2. PERMISSIONS: The specified entity may not have permission to be a maintainer\n")
+			errorDetails.WriteString("  3. PROVIDER BUG: The request may be malformed (less likely)\n")
+			errorDetails.WriteString("     - If you believe this is a provider bug, please report it with:\n")
+			errorDetails.WriteString("       * The maintainer ID(s)\n")
+			errorDetails.WriteString("       * The maintainer type(s)\n")
+			errorDetails.WriteString("       * Whether it works in the UI\n")
+
+			resp.Diagnostics.AddError(
+				"Maintainer Assignment Failed",
+				errorDetails.String(),
+			)
+			return
+		}
 	}
 
 	// Write logs using the tflog package
@@ -919,28 +955,64 @@ func (r *ResourceResource) Update(ctx context.Context, req resource.UpdateReques
 		return
 	}
 
-	// Detect if API silently rejected maintainers
-	if len(data.Maintainers) > 0 && len(result.Maintainers) == 0 {
-		maintainerIDs := make([]string, 0, len(data.Maintainers))
+	// Validate that each maintainer we sent was accepted by the API
+	if len(data.Maintainers) > 0 {
+		// Build map of maintainer IDs we sent
+		sentIDs := make(map[string]string) // ID -> type
 		for _, m := range data.Maintainers {
 			if !m.Entity.IsNull() {
 				idAttr := m.Entity.Attributes()["id"]
 				if strVal, ok := idAttr.(basetypes.StringValue); ok {
-					maintainerIDs = append(maintainerIDs, strVal.ValueString())
+					sentIDs[strVal.ValueString()] = m.Type.ValueString()
 				}
 			}
 		}
-		resp.Diagnostics.AddError(
-			"Maintainer Assignment Rejected",
-			fmt.Sprintf(
-				"The API rejected the maintainer assignment for this resource. "+
-					"The specified maintainer(s) (%s) may not have permission to be maintainers for this resource type, "+
-					"or the resource may not support maintainers. "+
-					"Please verify the maintainer IDs and resource configuration.",
-				strings.Join(maintainerIDs, ", "),
-			),
-		)
-		return
+
+		// Build map of maintainer IDs we received back
+		receivedIDs := make(map[string]bool)
+		for _, m := range result.Maintainers {
+			if !m.Entity.IsNull() {
+				idAttr := m.Entity.Attributes()["id"]
+				if strVal, ok := idAttr.(basetypes.StringValue); ok {
+					receivedIDs[strVal.ValueString()] = true
+				}
+			}
+		}
+
+		// Find which maintainers were rejected
+		var rejectedIDs []string
+		var rejectedTypes []string
+		for id, maintainerType := range sentIDs {
+			if !receivedIDs[id] {
+				rejectedIDs = append(rejectedIDs, id)
+				rejectedTypes = append(rejectedTypes, maintainerType)
+			}
+		}
+
+		if len(rejectedIDs) > 0 {
+			// Build detailed error message
+			var errorDetails strings.Builder
+			errorDetails.WriteString("The API rejected the following maintainer assignment(s):\n\n")
+			for i, id := range rejectedIDs {
+				errorDetails.WriteString(fmt.Sprintf("  - ID: %s (type: %s)\n", id, rejectedTypes[i]))
+			}
+			errorDetails.WriteString("\nPossible causes:\n")
+			errorDetails.WriteString("  1. INVALID ID: The ID may not exist or may not be a valid directory group/user ID\n")
+			errorDetails.WriteString("     - Common mistake: Using an Entitle Resource ID instead of a Directory Group ID\n")
+			errorDetails.WriteString("     - Solution: Verify the ID exists using the directory groups API or UI\n")
+			errorDetails.WriteString("  2. PERMISSIONS: The specified entity may not have permission to be a maintainer\n")
+			errorDetails.WriteString("  3. PROVIDER BUG: The request may be malformed (less likely)\n")
+			errorDetails.WriteString("     - If you believe this is a provider bug, please report it with:\n")
+			errorDetails.WriteString("       * The maintainer ID(s)\n")
+			errorDetails.WriteString("       * The maintainer type(s)\n")
+			errorDetails.WriteString("       * Whether it works in the UI\n")
+
+			resp.Diagnostics.AddError(
+				"Maintainer Assignment Failed",
+				errorDetails.String(),
+			)
+			return
+		}
 	}
 
 	// Save updated data into Terraform state
